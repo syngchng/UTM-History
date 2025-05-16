@@ -1,0 +1,130 @@
+<html lang="ko" data-tag-assistant-prod-present="" data-tag-assistant-present=""><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UTM 생성 이력 보기 (링크 추가)</title> 
+    <style>
+        body { font-family: sans-serif; margin: 20px; font-size: 14px; }
+        .button-container { margin-bottom: 20px; text-align: right; } 
+        .button-container button { padding: 8px 15px; font-size: 0.9em; cursor: pointer; background-color: #fb0e69; color: white; border: none; border-radius: 5px; }
+        .button-container button:hover { background-color: #f81e72; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; word-wrap: break-word; }
+        th { background-color: #f0f0f0; position: sticky; top: 0; z-index: 1;}
+        h1 { margin-top: 0; }
+        #loadingStatus { font-style: italic; color: #777; margin-bottom: 15px; }
+        #tableContainerWrapper { max-height: 70vh; overflow-y: auto; border: 1px solid #ddd; }
+    </style>
+</head>
+<body data-new-gr-c-s-check-loaded="14.1235.0" data-gr-ext-installed="">
+    <h1>UTM 생성 이력</h1> 
+    <div class="button-container">
+        <button onclick="location.href='https://syngchng.github.io/UTM-Param-Value-List/'">UTM Builder</button>
+    </div>
+    <p id="loadingStatus" style="display: none;">생성 이력 로딩 중...</p>
+    <div id="tableContainerWrapper">
+        <div id="optionsTableContainer"><table><thead><tr><th>생성 일시</th><th>Source</th><th>Medium</th><th>Campaign</th><th>Content</th><th>Term</th><th>페이지 URL</th><th>최종 URL</th><th>단축 URL</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <script>
+        // 1. UTM 생성 이력이 담긴 CSV URL
+        const HISTORY_DATA_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vShcppno7HuVQbjoQzbaBMEvoBGt6atss9FI_-F3qSh_pzgtxw7A4NPo6Y2EYoll2y5_8wMt08X_oV0/pub?gid=1831366188&single=true&output=csv'; 
+        // 위 URL은 "옵션 마스터 시트" CSV URL로 보입니다. 
+        // 실제 "생성 이력" CSV URL로 교체하시거나, 
+        // 또는 이 시트를 이력처럼 보여주는 것이 목적이라면 그대로 사용하셔도 됩니다.
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loadingStatusEl = document.getElementById('loadingStatus');
+            const tableContainerEl = document.getElementById('optionsTableContainer');
+
+            if (!HISTORY_DATA_CSV_URL || HISTORY_DATA_CSV_URL === '여기에_UTM_생성_이력_CSV_게시_URL을_넣으세요') { // 변수명 일치
+                loadingStatusEl.textContent = "오류: 데이터 소스 CSV URL이 설정되지 않았습니다.";
+                loadingStatusEl.style.color = "red";
+                return;
+            }
+            
+            try {
+                loadingStatusEl.textContent = "생성 이력 로딩 중...";
+                const response = await fetch(HISTORY_DATA_CSV_URL, {
+                    cache: 'no-cache' 
+                }); 
+
+                if (!response.ok) {
+                    throw new Error(`생성 이력 CSV 로드 실패 (상태 코드: ${response.status})`);
+                }
+
+                const csvDataText = await response.text(); 
+                
+                if (!csvDataText.trim()) { 
+                    loadingStatusEl.textContent = "생성 이력 데이터가 비어있거나 가져올 수 없습니다.";
+                    tableContainerEl.innerHTML = '<p>표시할 이력이 없습니다.</p>';
+                    return;
+                }
+
+                const tableElement = createSimpleTableFromCsv(csvDataText); 
+                tableContainerEl.innerHTML = ''; 
+                tableContainerEl.appendChild(tableElement); 
+                loadingStatusEl.style.display = 'none'; 
+
+            } catch (error) {
+                console.error("생성 이력 로딩 또는 표시 오류:", error);
+                loadingStatusEl.textContent = `오류: ${error.message}`;
+                loadingStatusEl.style.color = "red";
+                tableContainerEl.innerHTML = '<p>생성 이력을 불러오는 데 실패했습니다. 개발자 콘솔(F12)을 확인해주세요.</p>';
+            }
+        });
+
+        // CSV 텍스트를 HTML 테이블 요소로 단순 변환하는 함수 (URL 하이퍼링크 추가)
+        function createSimpleTableFromCsv(csvDataText) {
+            const lines = csvDataText.split(/\r?\n/).filter(line => line.trim() !== ""); 
+            const table = document.createElement('table');
+
+            if (lines.length === 0) {
+                const tr = table.insertRow();
+                const td = tr.insertCell();
+                td.textContent = "표시할 데이터가 없습니다 (CSV 비어있음).";
+                return table;
+            }
+
+            const headers = lines[0].split(',').map(header => header.trim().replace(/^"|"$/g, ''));
+            const thead = table.createTHead();
+            const headerRow = thead.insertRow();
+            headers.forEach(headerText => {
+                const th = document.createElement('th');
+                th.textContent = headerText;
+                headerRow.appendChild(th);
+            });
+
+            const tbody = table.createTBody();
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i];
+                const cells = line.split(',').map(cell => cell.replace(/^"|"$/g, '').trim());
+                const tr = tbody.insertRow();
+                
+                headers.forEach((header, index) => { 
+                    const td = tr.insertCell();
+                    const cellValue = cells[index] !== undefined ? cells[index] : ""; 
+                    
+                    const lowerCaseHeader = header.toLowerCase();
+                    // 실제 CSV 헤더 이름과 일치하는지 확인하고 필요시 "페이지 URL", "최종 URL" 등의 문자열을 수정하세요.
+                    if ((lowerCaseHeader.includes('page_url') || lowerCaseHeader.includes('페이지 url') || lowerCaseHeader.includes('페이지url')) && cellValue.startsWith('http')) {
+                        const a = document.createElement('a');
+                        a.href = cellValue;
+                        a.textContent = cellValue; 
+                        a.target = "_blank"; 
+                        td.appendChild(a);
+                    } else if ((lowerCaseHeader.includes('final_url') || lowerCaseHeader.includes('최종 url') || lowerCaseHeader.includes('최종url')) && cellValue.startsWith('http')) {
+                        const a = document.createElement('a');
+                        a.href = cellValue;
+                        a.textContent = cellValue; 
+                        a.target = "_blank"; 
+                        td.appendChild(a);
+                    } else {
+                        td.textContent = cellValue; 
+                    }
+                });
+            }
+            return table;
+        }
+    </script>
+
+</body></html>
